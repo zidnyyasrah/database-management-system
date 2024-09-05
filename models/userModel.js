@@ -1,40 +1,37 @@
-const { DataTypes } = require('sequelize');
-const sequelize = require('../database/db');
+const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 
-const User = sequelize.define('User', {
-    id: {
-        type: DataTypes.INTEGER,
-        autoIncrement: true,
-        primaryKey: true,
-        allowNull: false,
-        validate: {
-            isInt: true,
-            min: 1
-        }
-    },
+const userSchema = new mongoose.Schema({
     name: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        validate: {
-            len: [3, 15]
-        }
+        type: String,
+        required: true,
+        minlength: 3,
+        maxlength: 15,  
     },
     email: {
-        type: DataTypes.STRING,
-        allowNull: false,
-        validate: {
-            isEmail: true
-        },
-        unique: true
+        type: String,
+        required: true,
+        unique: true,
+        match: /.+\@.+\..+/,
     },
     password: {
-        type: DataTypes.STRING,
-        allowNull: false
+        type: String,
+        required: true
     },
     linkImgProfile: {
-        type: DataTypes.STRING,
-        allowNull: true,
-    }
+        type: String,
+        default: null,
+    },
 });
+
+// Hash password sebelum user disimpan
+userSchema.pre('save', async function (next) {
+    if (this.isModified('password')) {
+        this.password = await bcrypt.hash(this.password, 10);
+    }
+    next();
+});
+
+const User = mongoose.model('User', userSchema);
 
 module.exports = User;

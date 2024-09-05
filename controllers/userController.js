@@ -2,139 +2,121 @@ const User = require('../models/userModel');
 const bcrypt = require('bcrypt');  // Add this to hash passwords
 const jwt = require('jsonwebtoken');
 
-// Create a new user
+// Create user
 async function createUser(req, res) {
     const { name, email, password, linkImgProfile } = req.body;
 
-    // Manually validate password length
-    if (password.length < 7 || password.length > 15) {
-        return res.status(400).json({ error: 'Password must be between 7 and 15 characters long' });
-    }
-
     try {
-        // Hash the password before saving
-        const hashedPassword = await bcrypt.hash(password, 10);
+        // Cek apakah email user sudah ada
+        let user = await User.findOne({ email });
+        if (user) {
+            return res.status(400).json({ error: 'tidak dapat menambahkan user dengan email yang sama' });
+        }
 
-        // Create a new user
-        const newUser = await User.create({
+        // Buat instance user baru
+        user = new User({
             name,
             email,
-            password: hashedPassword,
-            linkImgProfile
+            password,
+            linkImgProfile,
         });
 
-        res.status(201).json({
-            id: newUser.id,
-            name: newUser.name,
-            email: newUser.email,
-            linkImgProfile: newUser.linkImgProfile
-        });
+        // Save user ke database
+        await user.save();
+
+        // JWT token
+        const token = jwt.sign({ id: user._id }, 'your_jwt_secret', { expiresIn: '1h' });
+
+        res.status(201).json({ message:'Berhasil membuat user baru, berikut token anda:',token });
     } catch (error) {
-        res.status(400).json({ error: error.message });
+        res.status(500).json({ error: 'Gagal membuat user' });
     }
 }
 
 
 // Get all users
 async function getAllUser(req, res) {
-    const users = await User.findAll({ attributes: ['id', 'name', 'email'] });
-    res.json(users);
+    try {
+        const users = await User.find().select('-password');
+        res.json(users);
+    } catch (error) {
+        res.status(500).json({ error: 'Gagal mengambil data user' });
+    }
 }
 
-// Get logged-in user data
+// Get current logged-in user
 async function getUserData(req, res) {
-    res.json({
-        id: req.user.id,
-        name: req.user.name,
-        email: req.user.email,
-        password: '********',  // Masked password
-        linkImgProfile: req.user.linkImgProfile
-    });
+    try {
+        const user = await User.findById(req.user.id).select('-password');
+        if (!user) {
+            return res.status(404).json({ error: 'User tidak ditemukan' });
+        }
+        res.json(user);
+    } catch (error) {
+        res.status(500).json({ error: 'Gagal mengambil data user' });
+    }
 }
 
 // Update logged-in user
 async function updateUser(req, res) {
     const { name, email, password, linkImgProfile } = req.body;
-    const userId = req.user.id; // Get the user ID from the JWT payload
-
     try {
-        // Fetch the user instance from the database
-        const user = await User.findByPk(userId);
+        const user = await User.findById(req.user.id);
         if (!user) {
-            return res.status(404).json({ error: 'User not found' });
+            return res.status(404).json({ error: 'User tidak ditemukan' });
         }
 
-        // Update user information
         if (name) user.name = name;
         if (email) user.email = email;
-        if (password) user.password = password; // Consider hashing the password before saving
+        if (password) user.password = password; // This will trigger password hashing in the model
         if (linkImgProfile) user.linkImgProfile = linkImgProfile;
 
-        // Save the changes
         await user.save();
 
         res.json(user);
     } catch (error) {
-        res.status(500).json({ error: 'Failed to update user information' });
+        res.status(500).json({ error: 'Gagal meng-update informasi user' });
     }
 }
 
-// user delete
+// Delete logged-in user
 async function removeUser(req, res) {
-    const { email } = req.body;
-
-    // Ensure the user is logged in and the email matches the logged-in user's email
-    if (req.user.email !== email) {
-        return res.status(403).json({ error: 'Unauthorized or email does not match logged-in user.' });
-    }
-
     try {
-        // Delete the user
-        await User.destroy({ where: { id: req.user.id } });
-
-        res.json({ message: 'User account deleted successfully.' });
+        const user = await User.findByIdAndDelete(req.user.id);
+        if (!user) {
+            return res.status(404).json({ error: 'User tidak ditemukan' });
+        }
+        res.json({ message: 'User berhasil dihapus' });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to delete user account.' });
+        res.status(500).json({ error: 'Gagal menghapus user' });
     }
 }
+
 
 // User login
 async function loginUser(req, res) {
     const { email, password } = req.body;
 
     try {
-        // Find the user by email
-        const user = await User.findOne({ where: { email } });
+        // Cek email user 
+        const user = await User.findOne({ email });
         if (!user) {
-            return res.status(404).json({ error: 'User not found' });
+            return res.status(400).json({ error: 'Email yang anda masukkan salah!' });
         }
 
-        // Compare the provided password with the stored hashed password
+        // Cek password
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) {
-            return res.status(401).json({ error: 'Invalid credentials' });
+            return res.status(400).json({ error: 'Password yang anda masukkan salah!' });
         }
 
-        // Generate a JWT token
-        const token = jwt.sign({ id: user.id, email: user.email }, 'your_jwt_secret', {
-            expiresIn: '1h',
-        });
+        // JWT token
+        const token = jwt.sign({ id: user._id }, 'your_jwt_secret', { expiresIn: '1h' });
 
-        // Send the token and user information as the response
-        res.json({ 
-            message: 'Login successful',
-            token,
-            user: {
-                id: user.id,
-                name: user.name,
-                email: user.email,
-                linkImgProfile: user.linkImgProfile,
-            }
-        });
+        res.json({ token });
     } catch (error) {
-        res.status(500).json({ error: 'Failed to log in' });
+        res.status(500).json({ error: 'Gagal log in' });
     }
 }
-
 
 module.exports = { getAllUser, getUserData, updateUser, removeUser, createUser, loginUser };
