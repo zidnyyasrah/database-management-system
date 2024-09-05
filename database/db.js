@@ -1,8 +1,15 @@
-const { Sequelize } = require('sequelize');
+const mongoose = require('mongoose');
 
-const sequelize = new Sequelize({
-    dialect: 'sqlite',
-    storage: 'database.sqlite',
-});
+const uri = 'mongodb+srv://zidny:123@backend7.q6wlw.mongodb.net/'
 
-module.exports = sequelize;
+async function connectDB() {
+    try {
+        await mongoose.connect(uri);
+        console.log('Berhasil connect ke MongoDB...');
+    } catch (error) {
+        console.error('Gagal connect ke MongoDB:', error);
+        process.exit(1);
+    }
+}
+
+module.exports = connectDB;
